@@ -1,0 +1,170 @@
+
+
+#include "stm32f4xx_hal.h"
+#include <cstdio>
+#include <cstring>
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  void SysTick_Handler(void);
+  void SystemClock_Config(void);
+  void Error_Handler(void);
+#ifdef __cplusplus
+}
+#endif
+
+UART_HandleTypeDef huart1;
+TIM_HandleTypeDef htim3;
+
+void Init_PWM()
+{
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  // 1. Habilitar relojes necesarios
+  __HAL_RCC_TIM3_CLK_ENABLE();  // TIM3 para PB0
+  __HAL_RCC_GPIOB_CLK_ENABLE(); // Para PB0
+
+  // 2. Configurar PB0 como AF2 (TIM3_CH3)
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  // 3. Configurar TIM3 para 12 bits (0-4095)
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 84 - 1; // 84MHz/84 = 1MHz
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 4095; // 12 bits resolution (0-4095)
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  // 4. Configurar canal PWM
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 2048; // 50% duty cycle inicial (2048/4095)
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  // 5. Iniciar PWM en el canal 3
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+}
+
+void Init_UART()
+{
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_USART1_CLK_ENABLE();
+
+  GPIO_InitTypeDef gpio;
+  gpio.Pin = GPIO_PIN_9 | GPIO_PIN_10;
+  gpio.Mode = GPIO_MODE_AF_PP;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+  gpio.Alternate = GPIO_AF7_USART1;
+  HAL_GPIO_Init(GPIOA, &gpio);
+
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+    Error_Handler();
+}
+
+void SystemClock_Config(void)
+{
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 25;
+  RCC_OscInitStruct.PLL.PLLN = 168;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+int main(void)
+{
+  HAL_Init();
+  SystemClock_Config();
+  Init_UART();
+  Init_PWM();
+
+  char buffer[20];  
+  uint32_t duty_cycle = 0;
+  uint8_t increasing = 1;
+  const uint32_t max_duty = 4095;
+  const uint32_t step = 1;
+
+  while (1)
+  {
+    if(increasing) {
+      duty_cycle = (duty_cycle + step > max_duty) ? (increasing=0, max_duty) : duty_cycle + step;
+    } else {
+      duty_cycle = (duty_cycle <= step) ? (increasing=1, 0) : duty_cycle - step;
+    }
+    
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, duty_cycle);
+    
+    int len = snprintf(buffer, sizeof(buffer), "PWM:%4lu\r\n", duty_cycle);
+    HAL_UART_Transmit(&huart1, (uint8_t *)buffer, len, HAL_MAX_DELAY);
+
+    HAL_Delay(5);
+  }
+}
+void Error_Handler(void)
+{
+  while (1)
+  {
+  }
+}
+
+void SysTick_Handler(void)
+{
+  HAL_IncTick();
+}
+
+
+
+
