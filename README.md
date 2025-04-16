@@ -8,3 +8,5 @@
 ### 4. PWM
 ### 5. ADC + PWM + UART
 ### 6. ADC(DMA) + PWM + UART(DMA)
+### 7. Control DRV8833 wiht Potenciometer
+### 8. I2C Scanner
