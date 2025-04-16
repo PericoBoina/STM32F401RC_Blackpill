@@ -1,5 +1,6 @@
 #include "stm32f4xx_hal.h"
 #include <cstdio>
+#include <cstring>
 
 #ifdef __cplusplus
 extern "C"
@@ -267,6 +268,11 @@ int main(void)
 
   uart_tx_complete = 1;
   last_uart_tx_time = HAL_GetTick() - 10;
+
+  char init_msg[] = "Sistema iniciado\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t *)init_msg, strlen(init_msg), 100);
+
+  HAL_Delay(1000);
 
   while (1)
   {
